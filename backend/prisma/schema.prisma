@@ -1,0 +1,181 @@
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+}
+
+generator client {
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "rhel-openssl-3.0.x", "debian-openssl-3.0.x"]
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+model User {
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String
+  email        String       @unique
+  passwordHash String       @map("password_hash")
+  role         Role         @default(USER)
+  createdAt    DateTime     @default(now()) @map("created_at")
+  wishlists    Wishlist[]
+  priceAlerts  PriceAlert[]
+
+  @@map("users")
+}
+
+model Product {
+  id          String           @id @default(uuid()) @db.Uuid
+  name        String
+  category    String
+  brand       String
+  imageUrl    String?          @map("image_url")
+  imageSource String?          @map("image_source")
+  imageVerified Boolean        @default(false) @map("image_verified")
+  description String?
+  createdAt               DateTime                 @default(now()) @map("created_at")
+  listings                ProductListing[]
+  wishlists               Wishlist[]
+  platformRecommendations PlatformRecommendation[]
+
+  @@index([name])
+  @@map("products")
+}
+
+model ProductListing {
+  id              String             @id @default(uuid()) @db.Uuid
+  productId       String             @map("product_id") @db.Uuid
+  sellerName      String             @map("seller_name")
+  sellerUrl       String             @map("seller_url")
+  price           Decimal            @db.Decimal(10, 2)
+  originalPrice   Decimal?           @map("original_price") @db.Decimal(10, 2)
+  discount        Int?               @default(0)
+  currency        String             @default("INR")
+  variant         String?
+  model           String?
+  rating          Float?
+  reviewCount     Int                @default(0) @map("review_count")
+  deliveryTime    String?            @default("2-3 Days") @map("delivery_time")
+  offers          String?            @default("Up to 10% Instant Bank Discount") @map("offers")
+  availability    String?            @default("IN_STOCK")
+  priceStatus     String?            @default("VERIFIED") @map("price_status")
+  imageStatus     String?            @default("VERIFIED") @map("image_status")
+  matchConfidence String?            @default("EXACT_MATCH") @map("match_confidence")
+  matchScore      Int?               @default(100) @map("match_score")
+  failureReason   String?            @map("failure_reason")
+  lastScrapedAt   DateTime           @default(now()) @map("last_scraped_at")
+  lastCheckedAt   DateTime?          @default(now()) @map("last_checked_at")
+  priceVerifiedAt DateTime?          @map("price_verified_at")
+  priceSource     String?            @default("catalog") @map("price_source")
+  product         Product            @relation(fields: [productId], references: [id], onDelete: Cascade)
+  priceHistory    PriceHistory[]
+  priceAlerts     PriceAlert[]
+  reviews         Review[]
+
+  @@index([productId])
+  @@map("product_listings")
+}
+
+model PriceHistory {
+  id         String         @id @default(uuid()) @db.Uuid
+  listingId  String         @map("listing_id") @db.Uuid
+  price      Decimal        @db.Decimal(10, 2)
+  recordedAt DateTime       @default(now()) @map("recorded_at")
+  listing    ProductListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@map("price_history")
+}
+
+model PriceAlert {
+  id          String         @id @default(uuid()) @db.Uuid
+  userId      String         @map("user_id") @db.Uuid
+  listingId   String         @map("listing_id") @db.Uuid
+  targetPrice Decimal        @map("target_price") @db.Decimal(10, 2)
+  isActive    Boolean        @default(true) @map("is_active")
+  createdAt   DateTime       @default(now()) @map("created_at")
+  user        User           @relation(fields: [userId], references: [id], onDelete: Cascade)
+  listing     ProductListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([listingId])
+  @@map("price_alerts")
+}
+
+model Wishlist {
+  id        String   @id @default(uuid()) @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  productId String   @map("product_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, productId])
+  @@index([userId])
+  @@map("wishlists")
+}
+
+model Review {
+  id              String         @id @default(uuid()) @db.Uuid
+  listingId       String         @map("listing_id") @db.Uuid
+  reviewerName    String         @map("reviewer_name")
+  rating          Float?
+  reviewText      String?        @map("review_text")
+  sentimentScore  Float?         @map("sentiment_score")
+  summarizedText  String?        @map("summarized_text")
+  scrapedAt       DateTime       @default(now()) @map("scraped_at")
+  listing         ProductListing @relation(fields: [listingId], references: [id], onDelete: Cascade)
+
+  @@index([listingId])
+  @@map("reviews")
+}
+
+model SellerReliability {
+  id                String   @id @default(uuid()) @db.Uuid
+  sellerName        String   @unique @map("seller_name")
+  reliabilityScore  Float    @map("reliability_score")
+  totalReviews      Int      @default(0) @map("total_reviews")
+  avgDeliveryDays   Float?   @map("avg_delivery_days")
+  returnPolicyScore Float?   @map("return_policy_score")
+  lastUpdated       DateTime @default(now()) @map("last_updated")
+
+  @@map("seller_reliability")
+}
+
+model PlatformRecommendation {
+  id                  String   @id @default(uuid()) @db.Uuid
+  productId           String   @map("product_id") @db.Uuid
+  recommendedPlatform String   @map("recommended_platform")
+  confidenceScore     Int      @map("confidence_score")
+  reasons             String[] @map("reasons")
+  bestPrice           Decimal  @map("best_price") @db.Decimal(10, 2)
+  bestSeller          String   @map("best_seller")
+  fastestDelivery     String   @map("fastest_delivery")
+  bestOffer           String   @map("best_offer")
+  verdictSummary      String   @map("verdict_summary")
+  createdAt           DateTime @default(now()) @map("created_at")
+  product             Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([productId])
+  @@map("platform_recommendations")
+}
+
+model ScraperLog {
+  id              String    @id @default(uuid()) @db.Uuid
+  spiderName      String?   @map("spider_name")
+  startedAt       DateTime? @map("started_at")
+  finishedAt      DateTime? @map("finished_at")
+  durationSeconds Float?    @map("duration_seconds")
+  itemsScraped    Int?      @map("items_scraped")
+  errorsCount     Int?      @map("errors_count")
+  status          String?
+  message         String?
+  createdAt       DateTime  @default(now()) @map("created_at")
+
+  @@map("scraper_logs")
+}
+
+
+
